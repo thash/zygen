@@ -1,0 +1,32 @@
+name: cargo test, clippy, fmt
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG: debug
+
+jobs:
+  test_and_check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Rust
+      run: |
+        rustup set profile minimal
+        rustup component add rustfmt clippy
+        rustup show
+    - name: Run cargo tests
+      run: cargo test --verbose
+    - name: Run cargo clippy
+      run: cargo clippy -- -D warnings
+    - name: Run cargo fmt
+      run: cargo fmt --all -- --check
+    - name: Build
+      run: cargo build --verbose

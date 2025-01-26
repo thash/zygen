@@ -1,0 +1,60 @@
+{
+    "id": "container:v1",
+    "name": "Container API",
+    "version": "v1",
+    "revision": "20241105",
+    "baseUrl": "https://container.googleapis.com/",
+    "description": "Google Kubernetes Engine API",
+    "discoveryVersion": "v1",
+    "documentationLink": "https://cloud.google.com/kubernetes-engine",
+    "kind": "discovery#restDescription",
+    "ownerDomain": "google.com",
+    "protocol": "rest",
+    "auth": {
+        "oauth2": {
+            "scopes": {
+                "https://www.googleapis.com/auth/cloud-platform": {
+                    "description": "View and manage your data across Google Cloud Platform services"
+                }
+            }
+        }
+    },
+    "icons": {
+        "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+        "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+    },
+    "resources": {
+        "projects": {
+            "resources": {
+                "locations": {
+                    "resources": {
+                        "clusters": {
+                            "methods": {
+                                "get": {
+                                    "httpMethod": "GET",
+                                    "flatPath": "v1/projects/{projectId}/locations/{location}/clusters/{clusterId}",
+                                    "path": "/v1/projects/{projectId}/locations/{location}/clusters/{clusterId}",
+                                    "description": "Gets the details of a specific cluster.",
+                                    "id": "container.projects.locations.clusters.get"
+                                }
+                            },
+                            "resources": {
+                                "nodePools": {
+                                    "methods": {
+                                        "get": {
+                                            "httpMethod": "GET",
+                                            "flatPath": "v1/projects/{projectId}/locations/{location}/clusters/{clusterId}/nodePools/{nodePoolId}",
+                                            "path": "/v1/projects/{projectId}/locations/{location}/clusters/{clusterId}/nodePools/{nodePoolId}",
+                                            "description": "Retrieves the requested node pool.",
+                                            "id": "container.projects.locations.clusters.nodePools.get"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

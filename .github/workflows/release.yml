@@ -1,0 +1,97 @@
+name: Build binaries and upload them to the GitHub release
+
+on:
+  push:
+    tags:
+    - "[0-9]+.[0-9]+.[0-9]+" # Regex matches w/ version tags like 1.0.3
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_DEBUG: true
+
+jobs:
+  create_release_on_github:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - run: echo "VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
+    - run: gh release create $VERSION --draft --verify-tag --title $VERSION
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    outputs:
+      version: ${{ env.VERSION }}
+
+  build_release_binaries:
+    runs-on: ${{ matrix.os }}
+    needs: ['create_release_on_github']
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - { name: linux    , target: x86_64-unknown-linux-musl , os: ubuntu-latest, strip: true  }
+        - { name: linux-arm, target: aarch64-unknown-linux-musl, os: ubuntu-latest, strip: false }
+        - { name: macos    , target: x86_64-apple-darwin       , os: macos-latest }
+        - { name: macos-arm, target: aarch64-apple-darwin      , os: macos-latest }
+        - { name: windows  , target: x86_64-pc-windows-msvc    , os: windows-latest }
+
+    steps:
+    - name: Define envvars for this jobs
+      shell: bash
+      run: |
+        version="${{ needs.create_release_on_github.outputs.version }}"
+        echo "BINARY_BASENAME=zygen-$version-${{ matrix.target }}" >> $GITHUB_ENV
+        echo "VERSION=$version" >> $GITHUB_ENV
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    # Install required packages to build OpenSSL from source (cfg(target_os="linux") in Cargo.toml)
+    - if: startsWith(matrix.os, 'ubuntu')
+      run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+    - name: Build release binary
+      uses: houseabsolute/actions-rust-cross@v0
+      with:
+        command: build
+        args: --release --locked
+        target: ${{ matrix.target }}
+
+    - if: matrix.name != 'windows'
+      run: ls -lrth && ls -lrth ./target/ && ls -lrth ./target/${{ matrix.target }}/{,*}
+
+    - if: startsWith(matrix.os, 'ubuntu')
+      name: Reduce the binary size by UPX
+      uses: svenstaro/upx-action@v2
+      with:
+        files: target/${{ matrix.target }}/release/zg{,.exe} # for zg (linux, windows) or zg.exe (windows)
+        args: --best --lzma
+        strip: ${{ matrix.strip }}
+
+    - name: Archive the binary and generate SHA256 hash
+      shell: bash
+      run: |
+        if [ "${{ matrix.name }}" = "windows" ]; then
+          7z a -tzip ${{ env.BINARY_BASENAME }}.zip ./target/${{ matrix.target}}/release/zg.exe
+          certutil -hashfile ${{ env.BINARY_BASENAME }}.zip SHA256 > ${{ env.BINARY_BASENAME }}.zip.sha256
+          echo "ASSET=${{ env.BINARY_BASENAME }}.zip" >> $GITHUB_ENV
+          echo "ASSET_SUM=${{ env.BINARY_BASENAME }}.zip.sha256" >> $GITHUB_ENV
+        else
+          tar -C ./target/${{ matrix.target}}/release/ -cvzf ${{ env.BINARY_BASENAME }}.tar.gz zg
+          shasum -a 256 ${{ env.BINARY_BASENAME }}.tar.gz > ${{ env.BINARY_BASENAME }}.tar.gz.sha256
+          echo "ASSET=${{ env.BINARY_BASENAME }}.tar.gz" >> $GITHUB_ENV
+          echo "ASSET_SUM=${{ env.BINARY_BASENAME }}.tar.gz.sha256" >> $GITHUB_ENV
+        fi
+
+    - if: matrix.name != 'windows'
+      run: ls -lrth && ls -lrth ./target/ && ls -lrth ./target/${{ matrix.target }}/{,*}
+
+    - name: Upload the archived binary to Assets of the GitHub release
+      run: gh release upload --clobber ${{ env.VERSION }} ${{ env.ASSET }} ${{ env.ASSET_SUM }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
