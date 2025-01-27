@@ -34,13 +34,12 @@ With zygen, you can:
       1. [Equivalent curl](#equivalent-curl)
    4. [zg update](#zg-update)
 4. [Installation](#installation)
-   1. [Download binary](#download-binary)
-   2. [Install from source](#install-from-source)
-   3. [Homebrew (MacOS) (Not available yet)](#homebrew-macos-not-available-yet)
+   1. [Homebrew (MacOS/Linux)](#homebrew-macoslinux)
+   2. [Download binary](#download-binary)
+   3. [Install from source](#install-from-source)
 5. [Examples](#examples)
 6. [Misc](#misc)
    1. [What zygen is not for](#what-zygen-is-not-for)
-   2. [Disclaimer](#disclaimer)
 
 <!-- vscode-markdown-toc-config
 	numbering=false
@@ -302,7 +301,15 @@ Dependencies:
   - zygen relies on `gcloud` for [generating access token](https://cloud.google.com/sdk/gcloud/reference/auth/print-access-token) and [retrieving project id from its config](https://cloud.google.com/sdk/gcloud/reference/config/get).
   - Make sure you have installed and initialize the `gcloud` command in your `$PATH`.
 
-## <a name='DownloadBinary'></a>Download binary
+
+## <a name='HomebrewMacOSLinux'></a>Homebrew (MacOS/Linux)
+
+```
+$ brew install thash/tap/zygen
+```
+
+
+## <a name='Downloadbinary'></a>Download binary
 
 Find [the latest release](https://github.com/thash/zygen/releases/latest) and download the binary for your platform. Extract the archive and make the binary executable:
 
@@ -326,11 +333,6 @@ $ git clone https://github.com/thash/zygen; cd zygen
 $ cargo build --release
 $ ./target/release/zg
 ```
-
-
-## <a name='HomebrewMacOS'></a>Homebrew (MacOS) (Not available yet)
-
-Not available yet.
 
 
 # Examples
