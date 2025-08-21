@@ -79,8 +79,11 @@ async fn download() -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let mut downloaded_files = Vec::new();
 
     for item in apis_to_download {
-        let filepath = discovery::download_api_definition(item.id, item.discovery_rest_url).await?;
-        downloaded_files.push(filepath);
+        if let Some(filepath) =
+            discovery::download_api_definition(item.id, item.discovery_rest_url).await?
+        {
+            downloaded_files.push(filepath);
+        }
     }
 
     Ok(downloaded_files)
