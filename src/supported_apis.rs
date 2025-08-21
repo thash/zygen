@@ -200,7 +200,6 @@ static SECONDARY_SUPPORTED_APIS: LazyLock<Vec<SupportedApi>> = LazyLock::new(||
         api!("pubsublite"               , "Pub/Sub Lite"                          , "Analytics"        , ["pubsub-lite"]                            , ["v1"]),
         api!("rapidmigrationassessment" , "Rapid Migration Assessment"            , "Migration"        , ["ramp"]                                   , ["v1"]),
         api!("recommendationengine"     , "Recommendations AI"                    , "AI/ML"            , ["recommendation-engine"]                  , ["v1beta1"]),
-        api!("resourcesettings"         , "Resource Settings"                     , "Management"       , ["resource-settings"]                      , ["v1"]),
         api!("retail"                   , "Vertex AI Search for Retail"           , "AI/ML"            , []                                         , ["v2", "v2beta", "v2alpha"]),
         api!("runtimeconfig"            , "Cloud Runtime Configuration"           , "Management"       , ["runtime-config"]                         , ["v1beta1"]),
         api!("serviceconsumermanagement", "Service Consumer Management"           , "Management"       , ["service-consumer-management"]            , ["v1", "v1beta1"]),
