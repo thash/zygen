@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::Bytes;
+use http_body_util::{BodyExt, Empty};
+use hyper::{Method as HyperMethod, Request as HyperRequest, Uri};
+use hyper_rustls::HttpsConnectorBuilder;
+use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -23,6 +28,41 @@ use std::path::PathBuf;
 
 use super::core;
 use super::supported_apis::SupportedApi;
+
+/// Simple HTTP GET function using hyper
+async fn http_get(url: &str) -> Result<(u16, String), Box<dyn Error>> {
+    // Install rustls crypto provider
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
+    let mut root_store = rustls::RootCertStore::empty();
+    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+    let config = rustls::ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+
+    let https_connector = HttpsConnectorBuilder::new()
+        .with_tls_config(config)
+        .https_or_http()
+        .enable_http1()
+        .enable_http2()
+        .build();
+
+    let client = Client::builder(TokioExecutor::new()).build(https_connector);
+
+    let uri: Uri = url.parse()?;
+    let req = HyperRequest::builder()
+        .method(HyperMethod::GET)
+        .uri(uri)
+        .body(Empty::<Bytes>::new())?;
+
+    let response = client.request(req).await?;
+    let status = response.status().as_u16();
+    let body_bytes = response.into_body().collect().await?.to_bytes();
+    let body_text = String::from_utf8(body_bytes.to_vec())?;
+
+    Ok((status, body_text))
+}
 
 const DISCOVERED_APIS_FILE: &str = "_discovered_apis.json";
 const DISCOVERY_URL: &str = "https://discovery.googleapis.com/discovery/v1/apis";
@@ -192,7 +232,7 @@ pub async fn ensure_discovered_apis(
 
     let discovered_apis_json: Value = if !discovered_apis_file_path.exists() && !replace {
         debug!("Discoverying APIs via: {}", DISCOVERY_URL);
-        let discovered_apis_json_text = reqwest::get(DISCOVERY_URL).await?.text().await?;
+        let (_status, discovered_apis_json_text) = http_get(DISCOVERY_URL).await?;
         let j = sort_json(serde_json::from_str(&discovered_apis_json_text)?);
 
         // Save the discovered APIs JSON to a file
@@ -219,18 +259,15 @@ pub async fn download_api_definition(
     discovery_rest_url: String,
 ) -> Result<Option<PathBuf>, Box<dyn Error>> {
     println!("Downloading API definition: {}", discovery_rest_url);
-    let response = reqwest::get(discovery_rest_url).await?;
+    let (status, api) = http_get(&discovery_rest_url).await?;
 
-    if !response.status().is_success() {
+    if status != 200 {
         println!(
             "  -> Failed to download API definition for {}. Status: {}. Skipping.",
-            api_id,
-            response.status()
+            api_id, status
         );
         return Ok(None);
     }
-
-    let api = response.text().await?;
     match serde_json::from_str::<Value>(&api) {
         Ok(json_value) => {
             let json = sort_json(json_value);
