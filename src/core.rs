@@ -209,7 +209,7 @@ async fn lazy_prep_api_file(
         .into_iter()
         .find(|api| api.name == api_name && api.versions.iter().any(|v| v == version));
 
-    let apidef_path = match standalone_api {
+    let apidef_path_option: Option<PathBuf> = match standalone_api {
         Some(standalone_api) => {
             // Download the standalone API definition
             let standalone_api_id = format!("{}:{}", api_name, version);
@@ -244,6 +244,8 @@ async fn lazy_prep_api_file(
             .await?
         }
     };
+
+    let apidef_path = apidef_path_option.expect("API definition path should exist");
     debug!("Downloaded API definition: {:?}", apidef_path);
 
     // Extract the API description to build ZgApi from the downloaded JSON file

@@ -43,6 +43,7 @@ pub fn select_resource_container(found: Vec<&core::ZgResource>) -> Option<&core:
         .or_else(|| found.first().copied()) // Though unlikely to happen, fallback to first if not found.
 }
 
+#[allow(clippy::doc_overindented_list_items)]
 /// Select "dataflow" resources, priorizing regional resources (templates, jobs, etc).
 /// - *1: "jobs" and its subresources; "jobs" under projects or locations. Prefer the regional one: "locations.jobs".
 /// - *2: "templates" ... under projects or locations. Prefer the regional one: "locations.templates".

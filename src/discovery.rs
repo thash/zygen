@@ -217,17 +217,37 @@ pub async fn ensure_discovered_apis(
 pub async fn download_api_definition(
     api_id: String,
     discovery_rest_url: String,
-) -> Result<PathBuf, Box<dyn Error>> {
+) -> Result<Option<PathBuf>, Box<dyn Error>> {
     println!("Downloading API definition: {}", discovery_rest_url);
-    let api = reqwest::get(discovery_rest_url).await?.text().await?;
-    let json: Value = sort_json(serde_json::from_str(&api)?);
+    let response = reqwest::get(discovery_rest_url).await?;
 
-    let filepath = discovered_dir().join(format!("{}.json", api_id.replace(":", "_")));
-    debug!("Saving API definition: {}", filepath.display());
-    let mut f = File::create(&filepath)?;
-    to_writer_pretty(&mut f, &json)?;
+    if !response.status().is_success() {
+        println!(
+            "  -> Failed to download API definition for {}. Status: {}. Skipping.",
+            api_id,
+            response.status()
+        );
+        return Ok(None);
+    }
 
-    Ok(filepath)
+    let api = response.text().await?;
+    match serde_json::from_str::<Value>(&api) {
+        Ok(json_value) => {
+            let json = sort_json(json_value);
+            let filepath = discovered_dir().join(format!("{}.json", api_id.replace(":", "_")));
+            debug!("Saving API definition: {}", filepath.display());
+            let mut f = File::create(&filepath)?;
+            to_writer_pretty(&mut f, &json)?;
+            Ok(Some(filepath))
+        }
+        Err(e) => {
+            println!(
+                "  -> Failed to parse API definition for {}. Error: {}. Skipping.",
+                api_id, e
+            );
+            Ok(None)
+        }
+    }
 }
 
 /// Currently, only Gemini API (generativelanguage) uses this strategy.

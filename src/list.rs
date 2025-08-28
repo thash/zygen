@@ -170,10 +170,11 @@ fn list_resources(api: &core::ZgApi, args: &ListArgs) -> Result<String, Box<dyn 
         let mut table = initialize_resources_table();
 
         // With --color option, find duplicated resource names to highlight
-        let duplicated_resources = args
-            .color
-            .then(|| api.duplicated_resources())
-            .unwrap_or_default();
+        let duplicated_resources = if args.color {
+            api.duplicated_resources()
+        } else {
+            Default::default()
+        };
 
         add_resource_rows(&mut table, resources, args, &duplicated_resources);
 
