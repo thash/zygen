@@ -219,7 +219,7 @@ fn get_gcloud_config_value(key: &str) -> Result<String, Box<dyn Error>> {
             "No '{}' found in gcloud config. Consider: 'gcloud config set {} {}'",
             key,
             key,
-            key.split('/').last().unwrap_or("").to_uppercase()
+            key.split('/').next_back().unwrap_or("").to_uppercase()
         )
         .into());
     }
