@@ -12,9 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::Bytes;
 use clap::Args;
+use http_body_util::{BodyExt, Empty, Full};
+use hyper::{
+    header::{HeaderName, HeaderValue},
+    HeaderMap, Method, Request, Uri,
+};
+use hyper_rustls::HttpsConnectorBuilder;
+use hyper_util::{
+    client::legacy::connect::HttpConnector, client::legacy::Client, rt::TokioExecutor,
+};
 use log::debug;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+
 use serde_json::{from_str, json, Value};
 use std::env;
 use std::error::Error;
@@ -90,33 +100,68 @@ pub async fn main(
         return Ok(());
     }
 
-    let client = build_client(&args.headers)?;
     let url = build_url(&api.base_url, &method, &args.params)?;
+    let headers = build_headers(&args.headers)?;
 
     // Execute the method by sending a request to the URL
     let res = match method.http_method.as_str() {
-        "GET" => client.get(url).send().await?.text().await?,
-        "DELETE" => client.delete(url).send().await?.text().await?,
+        "GET" => {
+            let client = build_client::<Empty<Bytes>>()?;
+            let uri: Uri = url.parse()?;
+            let mut req = Request::builder().method(Method::GET).uri(uri);
+
+            // Add headers
+            for (key, value) in headers.iter() {
+                req = req.header(key, value);
+            }
+
+            let req = req.body(Empty::<Bytes>::new())?;
+            let response = client.request(req).await?;
+            let body_bytes = response.into_body().collect().await?.to_bytes();
+            String::from_utf8(body_bytes.to_vec())?
+        }
+        "DELETE" => {
+            let client = build_client::<Empty<Bytes>>()?;
+            let uri: Uri = url.parse()?;
+            let mut req = Request::builder().method(Method::DELETE).uri(uri);
+
+            // Add headers
+            for (key, value) in headers.iter() {
+                req = req.header(key, value);
+            }
+
+            let req = req.body(Empty::<Bytes>::new())?;
+            let response = client.request(req).await?;
+            let body_bytes = response.into_body().collect().await?.to_bytes();
+            String::from_utf8(body_bytes.to_vec())?
+        }
         "POST" | "PUT" | "PATCH" => {
+            let client = build_client::<Full<Bytes>>()?;
             debug!("{} request w/ Data: {:?}", &method.http_method, &args.data);
 
             // If no --data option is provided, assume an empty JSON (= `--data '{}'`).
             let data = args.data.as_deref().unwrap_or("{}");
-
             let json_string = prepare_json_string(data)?;
 
-            let reqwest_method = method
-                .http_method
-                .parse::<reqwest::Method>()
-                .map_err(|e| format!("Invalid HTTP method '{}': {}", &method.http_method, e))?;
+            let hyper_method = match method.http_method.as_str() {
+                "POST" => Method::POST,
+                "PUT" => Method::PUT,
+                "PATCH" => Method::PATCH,
+                _ => return Err(format!("Unsupported HTTP method: {}", method.http_method).into()),
+            };
 
-            client
-                .request(reqwest_method, url)
-                .body(json_string) // Serialized JSON string from args.data
-                .send()
-                .await?
-                .text()
-                .await?
+            let uri: Uri = url.parse()?;
+            let mut req = Request::builder().method(hyper_method).uri(uri);
+
+            // Add headers
+            for (key, value) in headers.iter() {
+                req = req.header(key, value);
+            }
+
+            let req = req.body(Full::new(Bytes::from(json_string)))?;
+            let response = client.request(req).await?;
+            let body_bytes = response.into_body().collect().await?.to_bytes();
+            String::from_utf8(body_bytes.to_vec())?
         }
         _ => {
             return Err(format!(
@@ -228,23 +273,60 @@ fn get_gcloud_config_value(key: &str) -> Result<String, Box<dyn Error>> {
     Ok(value)
 }
 
-/// Build a reqwest client with the access token from gcloud CLI
-fn build_client(
-    custom_headers: &Option<Vec<(String, String)>>,
-) -> Result<reqwest::Client, Box<dyn Error>> {
-    let mut headers = HeaderMap::new();
+/// Build a hyper client with HTTPS support
+fn build_client<B>(
+) -> Result<Client<hyper_rustls::HttpsConnector<HttpConnector>, B>, Box<dyn Error>>
+where
+    B: hyper::body::Body + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    // Install rustls crypto provider
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
-    // Inject 'Authorization' header with the (Bearer) access token from gcloud CLI
+    let mut root_store = rustls::RootCertStore::empty();
+    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+    let config = rustls::ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+
+    let https_connector = HttpsConnectorBuilder::new()
+        .with_tls_config(config)
+        .https_or_http()
+        .enable_http1()
+        .enable_http2()
+        .build();
+
+    let client = Client::builder(TokioExecutor::new()).build(https_connector);
+
+    Ok(client)
+}
+
+/// Get access token from gcloud CLI
+fn get_access_token() -> Result<String, Box<dyn Error>> {
     let output = Command::new("gcloud")
         .arg("auth")
         .arg("print-access-token")
         .env("PATH", env::var("PATH")?)
         .output()?;
     let access_token = String::from_utf8(output.stdout)?;
+    Ok(access_token.trim().to_string())
+}
 
+/// Build headers for the request
+fn build_headers(
+    custom_headers: &Option<Vec<(String, String)>>,
+) -> Result<HeaderMap<HeaderValue>, Box<dyn Error>> {
+    let mut headers = HeaderMap::new();
+
+    // Get access token from gcloud CLI
+    let access_token = get_access_token()?;
+
+    // Inject 'Authorization' header with the (Bearer) access token
     headers.insert(
         "Authorization",
-        HeaderValue::from_str(&format!("Bearer {}", access_token.trim()))?,
+        HeaderValue::from_str(&format!("Bearer {}", access_token))?,
     );
 
     // Inject 'Content-Type' header with 'application/json'
@@ -260,9 +342,7 @@ fn build_client(
     }
     debug!("Headers: {:?}", headers);
 
-    Ok(reqwest::Client::builder()
-        .default_headers(headers)
-        .build()?)
+    Ok(headers)
 }
 
 /// Prepares the JSON string from the given data argument.
@@ -390,14 +470,19 @@ mod tests {
 
     #[test]
     fn test_build_client() {
-        let client = build_client(&None);
+        let client = build_client::<Empty<Bytes>>();
         assert!(client.is_ok(), "Client should be built successfully");
 
-        let _ = client
-            .unwrap()
-            .get("http://example.com")
-            .build()
+        // Test that we can create a simple request
+        let uri: Uri = "http://example.com".parse().expect("Failed to parse URI");
+        let req = Request::builder()
+            .method(Method::GET)
+            .uri(uri)
+            .body(Empty::<Bytes>::new())
             .expect("Failed to build request");
+
+        // Just verify the request was created successfully
+        assert_eq!(req.method(), Method::GET);
     }
 
     #[test]
